@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1625">
+  <title>MemoMind</title>
+  <style>
+    :root {
+      --bg: #1a1625; --surface: #252035; --surface2: #2f2842;
+      --text: #f0ebe3; --muted: #9a8fb0; --accent: #c9a87c;
+      --accent-dim: #8b7355; --success: #7eb88a; --warning: #e8b86d;
+      --danger: #d4736a; --radius: 12px; --sidebar-w: 240px;
+      --font: "Iowan Old Style", Georgia, serif;
+      --font-ui: system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100dvh; }
+    .layout { display: flex; min-height: 100dvh; }
+    .sidebar {
+      width: var(--sidebar-w); background: var(--surface);
+      border-right: 1px solid var(--surface2); padding: 1.25rem 1rem;
+      display: flex; flex-direction: column; flex-shrink: 0;
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 200;
+      transform: translateX(0); transition: transform 0.25s ease;
+    }
+    .sidebar-brand { font-size: 1.35rem; margin-bottom: 0.25rem; }
+    .sidebar-tag { font-size: 0.75rem; color: var(--muted); font-family: var(--font-ui); margin-bottom: 1.5rem; }
+    .nav-item {
+      display: flex; align-items: center; gap: 0.6rem;
+      width: 100%; text-align: left; padding: 0.65rem 0.75rem;
+      border: none; background: transparent; color: var(--muted);
+      border-radius: 8px; cursor: pointer; font-family: var(--font-ui);
+      font-size: 0.9rem; margin-bottom: 0.25rem;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--surface2); color: var(--accent); }
+    .sidebar-footer { margin-top: auto; padding-top: 1rem; font-family: var(--font-ui); font-size: 0.75rem; }
+    .sidebar-footer select {
+      width: 100%; margin-top: 0.35rem; background: var(--surface2);
+      color: var(--text); border: none; border-radius: 8px; padding: 0.4rem;
+    }
+    .backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 150;
+    }
+    .backdrop.open { display: block; }
+    .main {
+      flex: 1; margin-left: var(--sidebar-w);
+      padding: 1rem 1.5rem 2rem; max-width: 720px;
+    }
+    .topbar {
+      display: none; align-items: center; gap: 0.75rem;
+      margin-bottom: 1rem; font-family: var(--font-ui);
+    }
+    .menu-btn {
+      width: 40px; height: 40px; border: none; border-radius: 8px;
+      background: var(--surface); color: var(--text); font-size: 1.25rem; cursor: pointer;
+    }
+    h1 { font-size: 1.6rem; font-weight: 400; }
+    h2 { font-size: 1rem; color: var(--muted); margin: 1.25rem 0 0.5rem; font-family: var(--font-ui); font-weight: 500; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .card { background: var(--surface); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
+    input, textarea, select {
+      background: var(--surface2); border: 1px solid transparent; border-radius: var(--radius);
+      color: var(--text); font-family: var(--font); font-size: 1rem; padding: 0.65rem 0.85rem;
+      width: 100%; outline: none;
+    }
+    input:focus, textarea:focus { border-color: var(--accent-dim); }
+    textarea { min-height: 90px; resize: vertical; }
+    button {
+      font-family: var(--font-ui); font-size: 0.85rem; border: none;
+      border-radius: var(--radius); cursor: pointer; padding: 0.6rem 1rem;
+    }
+    .btn-primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+    .btn-secondary { background: var(--surface2); color: var(--text); }
+    .btn-ghost { background: transparent; color: var(--muted); }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }
+    .capture-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .capture-bar input { flex: 1; }
+    .entry-item, .task-item, .event-item {
+      padding: 0.75rem 0; border-bottom: 1px solid var(--surface2);
+    }
+    .entry-item:last-child, .task-item:last-child, .event-item:last-child { border-bottom: none; }
+    .meta { font-size: 0.75rem; color: var(--muted); font-family: var(--font-ui); margin-top: 0.2rem; }
+    .chip { display: inline-block; background: var(--surface2); padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-family: var(--font-ui); margin-right: 0.25rem; }
+    .filters button { margin-right: 0.35rem; margin-bottom: 0.35rem; }
+    .filters button.active { background: var(--accent); color: var(--bg); }
+    .empty { color: var(--muted); font-style: italic; padding: 0.75rem 0; }
+    .error-msg { color: var(--danger); font-size: 0.9rem; }
+    .return-msg { border-left: 3px solid var(--accent); font-style: italic; }
+    .entity-tag { display: inline-block; background: var(--surface2); color: var(--accent); padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.8rem; font-family: var(--font-ui); margin: 0.15rem; }
+    .extra-fields { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--surface2); }
+    .extra-fields label { font-size: 0.75rem; color: var(--muted); font-family: var(--font-ui); display: block; margin-bottom: 0.25rem; }
+    .reminder-row { display: flex; gap: 0.35rem; align-items: center; margin-bottom: 0.35rem; font-family: var(--font-ui); font-size: 0.8rem; }
+    .reminder-row input { flex: 1; }
+    .priority-high { color: var(--danger); }
+    .storage-warn { color: var(--warning); font-family: var(--font-ui); font-size: 0.8rem; }
+    .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 0.5rem; }
+    .img-grid img { width: 100%; border-radius: 8px; aspect-ratio: 1; object-fit: cover; }
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; padding: 1rem; max-width: none; }
+      .topbar { display: flex; }
+    }
+  </style>
+</head>
+<body>
+  <div class="backdrop" id="backdrop" onclick="closeSidebar()"></div>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">MemoMind</div>
+      <div class="sidebar-tag">Your personal historian</div>
+      <nav>
+        <button class="nav-item active" data-nav="memory" onclick="navigate('memory')">🧠 Memory</button>
+        <button class="nav-item" data-nav="tasks" onclick="navigate('tasks')">✓ Tasks</button>
+        <button class="nav-item" data-nav="events" onclick="navigate('events')">📅 Events</button>
+        <button class="nav-item" data-nav="search" onclick="navigate('search')">🔍 Search</button>
+      </nav>
+      <div class="sidebar-footer">
+        <span style="color:var(--muted)">Thinking with</span>
+        <select id="model-select" onchange="changeModel()"><option value="">Auto</option></select>
+        <div id="model-status" style="color:var(--muted);margin-top:0.35rem"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <button class="menu-btn" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+        <strong>MemoMind</strong>
+      </div>
+
+      <div id="view-onboarding" class="view onboarding">
+        <h1>Hi! I'm MemoMind</h1>
+        <p style="margin:1rem 0">Tell me anything — I'll remember it forever.</p>
+        <label>What's your name?</label>
+        <input type="text" id="onboard-name" style="margin:0.5rem 0 1rem">
+        <button class="btn-primary" onclick="onboardStep2()" style="width:100%">Continue</button>
+        <div id="onboard-step2" style="display:none;margin-top:1.5rem">
+          <p>Tell me one thing about yourself:</p>
+          <textarea id="onboard-first" style="margin:0.5rem 0"></textarea>
+          <button class="btn-primary" onclick="onboardCapture()" style="width:100%">Save it</button>
+        </div>
+        <button id="onboard-finish" class="btn-primary" style="display:none;width:100%;margin-top:1rem" onclick="finishOnboarding()">Start using MemoMind</button>
+      </div>
+
+      <div id="view-memory" class="view active">
+        <h1>Memory</h1>
+        <div id="return-message" class="card return-msg" style="display:none"></div>
+        <div id="storage-warning" class="storage-warn" style="display:none"></div>
+        <div class="capture-bar">
+          <input type="text" id="capture-input" placeholder="Tell me something..." onkeydown="if(event.key==='Enter')startCapture()">
+          <button class="btn-secondary" onclick="toggleVoice()" title="Voice">🎤</button>
+          <button class="btn-primary" onclick="startCapture()">Save</button>
+        </div>
+        <div class="row">
+          <label class="btn-secondary" style="cursor:pointer">
+            📷 Image <input type="file" accept="image/*" hidden onchange="uploadImage(this)">
+          </label>
+        </div>
+        <p id="home-error" class="error-msg"></p>
+        <h2>Recent</h2>
+        <div id="recent-entries" class="card"><p class="empty">Nothing yet</p></div>
+        <h2>Threads</h2>
+        <div id="active-threads" class="card"><p class="empty">No threads</p></div>
+      </div>
+
+      <div id="view-tasks" class="view">
+        <h1>Tasks</h1>
+        <div class="filters card">
+          <button class="active" data-filter="all" onclick="setTaskFilter('all',this)">All</button>
+          <button data-filter="today" onclick="setTaskFilter('today',this)">Today</button>
+          <button data-filter="upcoming" onclick="setTaskFilter('upcoming',this)">Upcoming</button>
+          <button data-filter="done" onclick="setTaskFilter('done',this)">Done</button>
+        </div>
+        <button class="btn-primary" style="margin-bottom:0.75rem" onclick="newTaskPrompt()">+ New task</button>
+        <div id="tasks-list" class="card"><p class="empty">No tasks</p></div>
+      </div>
+
+      <div id="view-events" class="view">
+        <h1>Events</h1>
+        <button class="btn-primary" style="margin-bottom:0.75rem" onclick="newEventPrompt()">+ New event</button>
+        <h2>Upcoming</h2>
+        <div id="events-upcoming" class="card"><p class="empty">No upcoming events</p></div>
+        <h2>Past</h2>
+        <details><summary style="cursor:pointer;color:var(--muted);font-family:var(--font-ui)">Show past</summary>
+          <div id="events-past" class="card"><p class="empty">None</p></div>
+        </details>
+      </div>
+
+      <div id="view-search" class="view">
+        <h1>Search</h1>
+        <div class="capture-bar">
+          <input type="text" id="search-input" placeholder="What would you like to know?" onkeydown="if(event.key==='Enter')doSearch()">
+          <button class="btn-primary" onclick="doSearch()">Ask</button>
+        </div>
+        <div id="search-stream" class="meta"></div>
+        <div class="card">
+          <p id="search-answer" style="line-height:1.6"></p>
+          <p id="search-confidence" class="meta"></p>
+        </div>
+        <div id="search-supporting"></div>
+        <p id="search-stats" class="meta"></p>
+      </div>
+
+      <div id="view-capture" class="view">
+        <h1>Review</h1>
+        <p class="meta" id="capture-persona"></p>
+        <div class="card">
+          <label class="meta">Type</label>
+          <select id="confirm-type" onchange="onConfirmTypeChange()">
+            <option value="note">Note</option>
+            <option value="fact">Fact</option>
+            <option value="task">Task</option>
+            <option value="event">Event</option>
+          </select>
+          <label class="meta" style="margin-top:0.75rem;display:block">Content</label>
+          <textarea id="confirm-content"></textarea>
+          <div id="confirm-entities" style="margin-top:0.5rem"></div>
+          <div id="confirm-extra" class="extra-fields"></div>
+        </div>
+        <div class="row">
+          <button class="btn-primary" onclick="confirmSave()">Save</button>
+          <button class="btn-ghost" onclick="navigate('memory');pendingConfirmation=null">Discard</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const API = '';
+    let pendingConfirmation = null;
+    let taskFilter = 'all';
+    let mediaRecorder, audioChunks = [];
+
+    async function api(path, opts = {}) {
+      const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json', ...opts.headers }, ...opts });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+    function formatDate(iso) { return iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''; }
+
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('backdrop').classList.toggle('open');
+    }
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('backdrop').classList.remove('open');
+    }
+
+    function navigate(name) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById('view-' + name)?.classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(n => {
+        n.classList.toggle('active', n.dataset.nav === name);
+      });
+      closeSidebar();
+      if (name === 'memory') loadMemory();
+      if (name === 'tasks') loadTasks();
+      if (name === 'events') loadEvents();
+    }
+
+    async function init() {
+      try {
+        const st = await api('/onboarding/status');
+        await loadStatusAndModels();
+        connectReminderStream();
+        if (!st.onboarding_complete) {
+          document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+          document.getElementById('view-onboarding').classList.add('active');
+          return;
+        }
+        navigate('memory');
+      } catch (e) { console.error(e); navigate('memory'); }
+    }
+
+    function connectReminderStream() {
+      try {
+        const es = new EventSource(API + '/events/stream');
+        es.addEventListener('reminder', e => {
+          const d = JSON.parse(e.data);
+          if (d.message && Notification.permission === 'granted') {
+            new Notification('MemoMind', { body: d.message });
+          } else if (d.message) alert(d.message);
+        });
+      } catch (_) {}
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+
+    async function loadStatusAndModels() {
+      const st = await api('/status');
+      const select = document.getElementById('model-select');
+      select.innerHTML = '<option value="">Auto-detect</option>';
+      const avail = st.available_models || {};
+      for (const [prov, models] of Object.entries(avail)) {
+        const g = document.createElement('optgroup');
+        g.label = prov === 'ollama' ? 'Ollama' : 'LM Studio';
+        models.forEach(m => {
+          const o = document.createElement('option');
+          o.value = prov + '::' + m.name;
+          o.textContent = m.label || m.name;
+          if (st.model?.name === prov && st.model?.model === m.name) o.selected = true;
+          g.appendChild(o);
+        });
+        select.appendChild(g);
+      }
+      document.getElementById('model-status').textContent = st.model
+        ? `${st.model.name} · ${st.model.model || ''}` : '';
+      try {
+        const storage = await api('/storage/stats');
+        const el = document.getElementById('storage-warning');
+        if (storage.level !== 'ok') {
+          el.textContent = `Image storage: ${storage.total_gb} GB (${storage.level})`;
+          el.style.display = 'block';
+        }
+      } catch (_) {}
+    }
+
+    async function changeModel() {
+      const v = document.getElementById('model-select').value;
+      if (!v) return;
+      const [provider, model] = v.split('::');
+      await api('/model', { method: 'POST', body: JSON.stringify({ provider, model }) });
+      await loadStatusAndModels();
+    }
+
+    async function loadMemory() {
+      const session = await api('/session');
+      const ret = document.getElementById('return-message');
+      if (session.return_message) { ret.textContent = session.return_message; ret.style.display = 'block'; }
+      else ret.style.display = 'none';
+      const { entries } = await api('/entries?limit=8');
+      const el = document.getElementById('recent-entries');
+      if (!entries?.length) { el.innerHTML = '<p class="empty">Nothing yet</p>'; }
+      else el.innerHTML = entries.map(e => {
+        let thumb = '';
+        if (e.type === 'image' && e.image) thumb = `<img src="/images/${e.id}/thumb" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;margin-right:0.5rem;float:left">`;
+        return `<div class="entry-item">${thumb}<div>${esc(e.content)}</div><div class="meta">${e.type} · ${formatDate(e.created_at)}</div></div>`;
+      }).join('');
+      const { threads } = await api('/threads?status=active');
+      const th = document.getElementById('active-threads');
+      th.innerHTML = threads?.length ? threads.map(t => `<span class="chip">${esc(t.title)} (${t.entry_count||0})</span>`).join('') : '<p class="empty">No threads</p>';
+    }
+
+    async function loadTasks() {
+      const filter = taskFilter === 'all' ? '' : `?filter=${taskFilter}`;
+      const { tasks } = await api('/tasks' + filter);
+      const el = document.getElementById('tasks-list');
+      if (!tasks?.length) { el.innerHTML = '<p class="empty">No tasks</p>'; return; }
+      const groups = { high: [], medium: [], low: [], done: [] };
+      tasks.forEach(t => {
+        const p = t.status === 'done' ? 'done' : (t.priority || 'medium');
+        (groups[p] || groups.medium).push(t);
+      });
+      let html = '';
+      for (const [label, items] of Object.entries(groups)) {
+        if (!items.length) continue;
+        html += `<h2 style="text-transform:uppercase;font-size:0.7rem">${label}</h2>`;
+        html += items.map(t => `
+          <div class="task-item">
+            <label style="display:flex;gap:0.5rem;align-items:flex-start;cursor:pointer">
+              <input type="checkbox" ${t.status==='done'?'checked':''} onchange="toggleTask('${t.id}',this.checked)">
+              <div>
+                <div>${esc(t.title)}</div>
+                <div class="meta">${t.due_date ? 'due '+formatDate(t.due_date) : 'no due date'}${t.recurrence?' · ↻':''}</div>
+              </div>
+            </label>
+          </div>`).join('');
+      }
+      el.innerHTML = html;
+    }
+
+    function setTaskFilter(f, btn) {
+      taskFilter = f;
+      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadTasks();
+    }
+
+    async function toggleTask(id, done) {
+      await api(`/tasks/${id}/status`, { method: 'POST', body: JSON.stringify({ status: done ? 'done' : 'todo' }) });
+      loadTasks();
+    }
+
+    function newTaskPrompt() {
+      const t = prompt('Task title:');
+      if (!t) return;
+      api('/tasks', { method: 'POST', body: JSON.stringify({ title: t, priority: 'medium' }) }).then(() => loadTasks());
+    }
+
+    async function loadEvents() {
+      const { events, past } = await api('/events?include_past=1');
+      const up = document.getElementById('events-upcoming');
+      up.innerHTML = events?.length ? events.map(e => `
+        <div class="event-item">
+          <div><strong>${formatDate(e.event_date)}</strong> ${esc(e.title)}</div>
+          <div class="meta">${e.location || ''} · ${(e.reminders||[]).length} reminders</div>
+        </div>`).join('') : '<p class="empty">No upcoming events</p>';
+      const pa = document.getElementById('events-past');
+      pa.innerHTML = past?.length ? past.map(e => `<div class="event-item meta">${formatDate(e.event_date)} — ${esc(e.title)}</div>`).join('') : '<p class="empty">None</p>';
+    }
+
+    function newEventPrompt() {
+      const t = prompt('Event title:');
+      const d = prompt('Date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+      if (!t || !d) return;
+      api('/events', { method: 'POST', body: JSON.stringify({
+        title: t, event_date: d + 'T14:00:00+00:00',
+        reminders: [{ offset_minutes: 1440, label: null }]
+      })}).then(() => loadEvents());
+    }
+
+    async function startCapture() {
+      const input = document.getElementById('capture-input').value.trim();
+      if (!input) return;
+      const result = await api('/capture', { method: 'POST', body: JSON.stringify({ input, type: 'text' }) });
+      showConfirmation(result);
+      document.getElementById('capture-input').value = '';
+    }
+
+    function showConfirmation(result) {
+      pendingConfirmation = result;
+      document.getElementById('capture-persona').textContent = result.persona_message || '';
+      document.getElementById('confirm-content').value = result.cleaned || '';
+      document.getElementById('confirm-type').value = result.suggested_type || 'note';
+      document.getElementById('confirm-entities').innerHTML = (result.entities||[]).map(e =>
+        `<span class="entity-tag">${e.type}: ${esc(e.value)}</span>`).join('');
+      renderExtraFields(result);
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById('view-capture').classList.add('active');
+    }
+
+    function renderExtraFields(result) {
+      const el = document.getElementById('confirm-extra');
+      const type = document.getElementById('confirm-type').value;
+      const extra = result.extra_data || {};
+      if (type === 'task') {
+        const t = extra.task || {};
+        el.innerHTML = `
+          <label>Priority</label>
+          <select id="task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+          <label style="margin-top:0.5rem;display:block">Due date</label>
+          <input type="date" id="task-due" value="${t.due_date||''}">
+          <div id="reminder-list" style="margin-top:0.75rem"></div>
+          <button type="button" class="btn-ghost" onclick="addReminderRow()">+ Add reminder</button>`;
+        document.getElementById('task-priority').value = t.priority || 'medium';
+      } else if (type === 'event') {
+        const ev = extra.event || {};
+        const dt = (ev.event_date || '').slice(0, 16);
+        el.innerHTML = `
+          <label>Date & time</label>
+          <input type="datetime-local" id="event-date" value="${dt.replace('Z','')}">
+          <label style="margin-top:0.5rem;display:block">Location</label>
+          <input type="text" id="event-location" value="${esc(ev.location||'')}">
+          <div id="reminder-list" style="margin-top:0.75rem"></div>
+          <button type="button" class="btn-ghost" onclick="addReminderRow()">+ Add reminder</button>`;
+        (ev.reminders || [{ offset_minutes: 1440 }]).forEach(r => addReminderRow(r.offset_minutes, r.label));
+      } else el.innerHTML = '';
+    }
+
+    function onConfirmTypeChange() { if (pendingConfirmation) renderExtraFields(pendingConfirmation); }
+
+    function addReminderRow(offset = 1440, label = '') {
+      const list = document.getElementById('reminder-list');
+      if (!list) return;
+      const row = document.createElement('div');
+      row.className = 'reminder-row';
+      row.innerHTML = `
+        <input type="number" class="rem-offset" value="${offset}" placeholder="min before" style="width:80px">
+        <input type="text" class="rem-label" value="${esc(label)}" placeholder="Label (optional)" style="flex:1">
+        <button type="button" class="btn-ghost" onclick="this.parentElement.remove()">×</button>`;
+      list.appendChild(row);
+    }
+
+    function collectReminders() {
+      return Array.from(document.querySelectorAll('.reminder-row')).map(row => ({
+        offset_minutes: parseInt(row.querySelector('.rem-offset').value, 10) || 0,
+        label: row.querySelector('.rem-label').value || null,
+        method: 'notification',
+      })).filter(r => r.offset_minutes > 0);
+    }
+
+    async function confirmSave() {
+      if (!pendingConfirmation) return;
+      const save_as = document.getElementById('confirm-type').value;
+      const body = {
+        confirmation_id: pendingConfirmation.confirmation_id,
+        approved_content: document.getElementById('confirm-content').value,
+        save_as,
+        reminders: collectReminders(),
+      };
+      if (save_as === 'task') {
+        body.task = {
+          title: body.approved_content,
+          priority: document.getElementById('task-priority')?.value || 'medium',
+          due_date: document.getElementById('task-due')?.value || null,
+        };
+      }
+      if (save_as === 'event') {
+        const dt = document.getElementById('event-date')?.value;
+        body.event = {
+          title: body.approved_content,
+          event_date: dt ? new Date(dt).toISOString() : new Date().toISOString(),
+          location: document.getElementById('event-location')?.value || null,
+        };
+      }
+      await api('/capture/confirm', { method: 'POST', body: JSON.stringify(body) });
+      pendingConfirmation = null;
+      navigate('memory');
+    }
+
+    async function doSearch() {
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+      navigate('search');
+      document.getElementById('search-answer').textContent = 'Searching...';
+      try {
+        const result = await api('/search', { method: 'POST', body: JSON.stringify({ query }) });
+        document.getElementById('search-answer').textContent = result.answer || '';
+        document.getElementById('search-confidence').textContent = result.confidence ? `Confidence: ${result.confidence}` : '';
+        document.getElementById('search-stats').textContent = `Searched ${result.total_entries_searched||0} entries`;
+        const sup = document.getElementById('search-supporting');
+        sup.innerHTML = (result.supporting||[]).map(s => `<div class="card" style="margin-top:0.5rem"><div>${esc(s.finding)}</div></div>`).join('');
+      } catch (e) {
+        document.getElementById('search-answer').textContent = e.message;
+      }
+    }
+
+    async function uploadImage(input) {
+      const file = input.files?.[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('image', file);
+      await fetch(API + '/images/upload', { method: 'POST', body: fd });
+      loadMemory();
+      input.value = '';
+    }
+
+    async function onboardStep2() {
+      const name = document.getElementById('onboard-name').value.trim();
+      if (!name) return;
+      window._onboardName = name;
+      document.getElementById('onboard-step2').style.display = 'block';
+    }
+
+    async function onboardCapture() {
+      const text = document.getElementById('onboard-first').value.trim();
+      if (!text) return;
+      const r = await api('/capture', { method: 'POST', body: JSON.stringify({ input: text }) });
+      await api('/capture/confirm', { method: 'POST', body: JSON.stringify({
+        confirmation_id: r.confirmation_id, approved_content: r.cleaned, save_as: r.suggested_type || 'note'
+      })});
+      document.getElementById('onboard-finish').style.display = 'block';
+    }
+
+    async function finishOnboarding() {
+      await api('/onboarding/complete', { method: 'POST', body: JSON.stringify({ name: window._onboardName }) });
+      navigate('memory');
+    }
+
+    async function toggleVoice() {
+      if (!navigator.mediaDevices) return alert('Voice not available');
+      if (mediaRecorder?.state === 'recording') { mediaRecorder.stop(); return; }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const fd = new FormData();
+        fd.append('audio', blob, 'rec.webm');
+        const res = await fetch(API + '/voice/transcribe', { method: 'POST', body: fd });
+        const d = await res.json();
+        if (d.text) document.getElementById('capture-input').value = d.text;
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorder.start();
+      setTimeout(() => mediaRecorder?.stop(), 5000);
+    }
+
+    init();
+  </script>
+</body>
+</html>

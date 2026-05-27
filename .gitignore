@@ -1,0 +1,47 @@
+# Python / virtualenv
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Local databases / runtime state
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Local app state and logs
+.memomind/
+logs/
+*.log
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+id_rsa
+id_ed25519
+
+# Backup / temporary files
+*.bak
+*.tmp
+*.swp
+
+# Markdown (local specs/docs — not committed)
+*.md
