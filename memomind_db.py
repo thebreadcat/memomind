@@ -845,6 +845,8 @@ def list_tasks(
         params.append(today)
     elif filter_name == "done":
         query += " AND status = 'done'"
+    elif filter_name == "open":
+        query += " AND status NOT IN ('done', 'abandoned')"
 
     order = {
         "priority": "CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, due_date ASC",
