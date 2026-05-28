@@ -15,10 +15,13 @@ Return JSON only:
   "uncertain": [],
   "contradictions": [{"description": "...", "entry_ids": ["id1", "id2"]}]
 }
-Be honest. Only state what entries support. Flag contradictions."""
+Be honest. Only state what entries support. Flag contradictions.
+If multiple entries each answer the query, return a separate finding for EACH entry — do not merge distinct facts into one finding."""
 
 REDUCE_SYSTEM = """Synthesize findings into a warm, honest answer for the user.
-Start with facts from their records. Never invent. Return JSON:
+Start with facts from their records. Never invent.
+You MUST include every distinct finding below — if there are several, mention each one (short list or combined sentences). Do not drop any finding.
+Return JSON:
 {
   "answer": "full answer text",
   "confidence": "high|medium|low|none",
@@ -81,6 +84,25 @@ def split_chunks(entries: list[dict], size: int | None = None) -> list[list[dict
     return [entries[i : i + chunk_size] for i in range(0, len(entries), chunk_size)]
 
 
+def _ensure_per_entry_findings(chunk: list[dict], findings: list[dict]) -> list[dict]:
+    """If the model merged entries, add one finding per uncovered entry."""
+    covered: set[str] = set()
+    out = list(findings)
+    for f in out:
+        for eid in f.get("entry_ids", []):
+            covered.add(eid)
+    for e in chunk:
+        if e["id"] in covered:
+            continue
+        out.append({
+            "finding": e["content"][:500],
+            "entry_ids": [e["id"]],
+            "confidence": "medium",
+        })
+        covered.add(e["id"])
+    return out
+
+
 def map_chunk(query: str, chunk: list[dict], chunk_num: int) -> dict:
     entries_text = "\n".join(
         f"[{e['id']}] ({e.get('type', 'note')}) {e['content']}" for e in chunk
@@ -90,24 +112,27 @@ def map_chunk(query: str, chunk: list[dict], chunk_num: int) -> dict:
         result = complete(prompt, system=CHUNK_SYNTHESIS_SYSTEM, max_tokens=1024)
         parsed = extract_json_from_response(result)
         if isinstance(parsed, dict):
+            findings = _ensure_per_entry_findings(
+                chunk, parsed.get("findings", [])
+            )
             return {
                 "chunk": chunk_num,
-                "findings": parsed.get("findings", []),
+                "findings": findings,
                 "uncertain": parsed.get("uncertain", []),
                 "contradictions": parsed.get("contradictions", []),
             }
     except (NoModelFoundError, Exception):
         pass
-    # Fallback without model
+    # Fallback without model — one finding per entry
     return {
         "chunk": chunk_num,
         "findings": [
             {
-                "finding": e["content"][:200],
+                "finding": e["content"][:500],
                 "entry_ids": [e["id"]],
                 "confidence": "medium",
             }
-            for e in chunk[:3]
+            for e in chunk
         ],
         "uncertain": [],
         "contradictions": [],
@@ -132,6 +157,56 @@ def spreading_activation(seed_entries: list[dict], depth: int = 2) -> list[tuple
     return sorted(activated.items(), key=lambda x: x[1], reverse=True)
 
 
+def _unique_finding_texts(all_findings: list[dict]) -> list[str]:
+    """Distinct finding strings, preserving order."""
+    texts: list[str] = []
+    seen: set[str] = set()
+    for f in all_findings:
+        t = (f.get("finding") or "").strip()
+        if not t:
+            continue
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        texts.append(t)
+    return texts
+
+
+def compose_answer_from_findings(all_findings: list[dict]) -> dict:
+    """Deterministic answer that always includes every distinct finding."""
+    texts = _unique_finding_texts(all_findings)
+    if not texts:
+        return {
+            "answer": persona.SEARCH["not_found"],
+            "confidence": "none",
+            "contradictions": [],
+        }
+
+    confidences = [f.get("confidence", "medium") for f in all_findings if f.get("finding")]
+    if any(c == "high" for c in confidences):
+        confidence = "high"
+    elif any(c == "medium" for c in confidences):
+        confidence = "medium"
+    else:
+        confidence = confidences[0] if confidences else "medium"
+
+    body = ". ".join(texts)
+    if body and body[-1] not in ".!?":
+        body += "."
+
+    prefix = persona.SEARCH["from_records"]
+    if confidence in ("low", "medium") and len(texts) == 1:
+        prefix = persona.SEARCH["uncertain"]
+    answer = prefix + body[0].lower() + body[1:] if body else prefix + persona.SEARCH["not_found"]
+
+    return {
+        "answer": answer,
+        "confidence": confidence,
+        "contradictions": [],
+    }
+
+
 def reduce_findings(query: str, all_findings: list[dict], entry_count: int) -> dict:
     if not all_findings:
         return {
@@ -139,6 +214,11 @@ def reduce_findings(query: str, all_findings: list[dict], entry_count: int) -> d
             "confidence": "none",
             "contradictions": [],
         }
+
+    unique = _unique_finding_texts(all_findings)
+    # Multiple distinct facts: compose in Python so nothing is dropped
+    if len(unique) > 1:
+        return compose_answer_from_findings(all_findings)
 
     findings_text = json.dumps(all_findings, indent=2)
     prompt = f"Query: {query}\nTotal entries searched: {entry_count}\n\nFindings:\n{findings_text}"
@@ -161,14 +241,7 @@ def reduce_findings(query: str, all_findings: list[dict], entry_count: int) -> d
     except (NoModelFoundError, Exception):
         pass
 
-    # Fallback compose
-    top = all_findings[0] if all_findings else {}
-    finding_text = top.get("finding", persona.SEARCH["not_found"])
-    return {
-        "answer": persona.SEARCH["from_records"] + finding_text,
-        "confidence": top.get("confidence", "medium"),
-        "contradictions": [],
-    }
+    return compose_answer_from_findings(all_findings)
 
 
 def search(query: str, scope: str = "personal", limit: int = 100) -> dict:
