@@ -2,11 +2,11 @@
 
 RETURN_MESSAGES = {
     "same_day": None,
-    "days_1_6": "Welcome back! Ready to pick up where we left off?",
-    "days_7_29": "Hey, good to see you! A lot can happen in {days} days — anything new worth remembering?",
-    "days_30_89": "You're back! I've been keeping everything safe. Want to catch me up on life?",
-    "days_90_364": "It's so good to hear from you. I've got everything right where you left it. What's been going on?",
-    "days_365_plus": "Hey! I still have everything you ever told me — nothing's gone anywhere. Where do you want to start?",
+    "days_1_6": None,
+    "days_7_29": None,
+    "days_30_89": None,
+    "days_90_364": None,
+    "days_365_plus": None,
 }
 
 CAPTURE = {
